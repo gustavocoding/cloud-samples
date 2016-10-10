@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: List
+items: 
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: infinispan-server
+    namespace: myproject
+    labels:
+      app: infinispan-server
+  spec:
+    strategy:
+      type: Rolling
+      rollingParams:
+        updatePeriodSeconds: 1
+        intervalSeconds: 1
+        timeoutSeconds: 600
+        maxUnavailable: 25%
+        maxSurge: 25%
+      resources:
+    triggers:
+      - type: ConfigChange
+    replicas: 1
+    test: false
+    selector:
+      app: infinispan-server
+      deploymentconfig: infinispan-server
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: infinispan-server
+          deploymentconfig: infinispan-server
+      spec:
+        containers:
+        - name: jgroups-gossip
+          image: jboss/jgroups-gossip
+          ports:
+            - containerPort: 12001
+        - name: infinispan-server
+          image: 'jboss/infinispan-server'
+          args:
+          - custom/my-config
+          - "-Djboss.default.jgroups.stack=tcp-gossip"
+          - "-Djgroups.gossip.initial_hosts=$(JGROUPS_GOSSIP_SERVICE_HOST)[$(JGROUPS_GOSSIP_PORT_12001_TCP_PORT)]"
+          ports:
+            - containerPort: 7600
+            - containerPort: 8080
+            - containerPort: 8181
+            - containerPort: 8888
+            - containerPort: 9990
+            - containerPort: 11211
+            - containerPort: 11222
+            - containerPort: 57600
+          env:
+            - name: OPENSHIFT_KUBE_PING_NAMESPACE
+              valueFrom: {fieldRef: {apiVersion: v1, fieldPath: metadata.namespace}}
+          resources:
+          terminationMessagePath: /dev/termination-log
+          imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext:
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: jgroups-gossip
+    labels:
+      app: infinispan-server
+  spec:
+    ports:
+      - port: 12001
+        targetPort: 12001
+    selector:
+      app: infinispan-server
+
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: infinispan-server
+    labels:
+      app: infinispan-server
+  spec:
+    ports:
+      - name: 8080-tcp
+        protocol: TCP
+        port: 8080
+        targetPort: 8080
+    selector:
+      app: infinispan-server
+      deploymentconfig: infinispan-server
+
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: infinispan-server
+    labels:
+      app: infinispan-server
+  spec:
+    to:
+      kind: Service
+      name: infinispan-server
+    port:
+      targetPort: 8080-tcp
+
